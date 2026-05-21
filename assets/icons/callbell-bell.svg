@@ -1,0 +1,22 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bellFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="62%" stop-color="#F7C948"/>
+      <stop offset="100%" stop-color="#E5A90A"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="#13203F"/>
+  <g transform="translate(128 126) rotate(-10)">
+    <path d="M-54 22C-50 -32 -28 -70 0 -70C28 -70 50 -32 54 22L68 46H-68L-54 22Z" fill="url(#bellFill)" stroke="#875A00" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M-40 45H40C38 62 22 74 0 74C-22 74 -38 62 -40 45Z" fill="#FAD46B" stroke="#875A00" stroke-width="9" stroke-linejoin="round"/>
+    <circle cx="0" cy="67" r="14" fill="#B87400"/>
+    <rect x="-10" y="-95" width="20" height="24" rx="8" fill="#F4C145" stroke="#875A00" stroke-width="8"/>
+  </g>
+  <g stroke="#FFE082" stroke-width="10" stroke-linecap="round" opacity="0.95">
+    <path d="M38 84C26 100 22 118 24 134"/>
+    <path d="M66 58C52 74 46 92 47 112"/>
+    <path d="M218 98C230 116 234 134 232 152"/>
+    <path d="M192 66C206 82 212 100 211 120"/>
+  </g>
+</svg>

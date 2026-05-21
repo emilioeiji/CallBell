@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "LvDSqQfKo6g=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\emili\\source\\repos\\CallBell\\CallBell.Config\\CallBell.Config.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\emili\\.nuget\\packages\\system.configuration.configurationmanager\\10.0.0\\system.configuration.configurationmanager.10.0.0.nupkg.sha512",
+    "C:\\Users\\emili\\.nuget\\packages\\system.diagnostics.eventlog\\10.0.0\\system.diagnostics.eventlog.10.0.0.nupkg.sha512",
+    "C:\\Users\\emili\\.nuget\\packages\\system.security.cryptography.protecteddata\\10.0.0\\system.security.cryptography.protecteddata.10.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CallBell Monitor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="board-shell">
+    <header class="board-header">
+      <div class="header-leading">
+        <div>
+          <p class="eyebrow">Factory monitor</p>
+          <h1 id="boardTitle">CallBell Monitor</h1>
+        </div>
+        <div class="sector-picker">
+          <label for="sectorSelect">Setor</label>
+          <select id="sectorSelect"></select>
+        </div>
+      </div>
+      <div class="header-meta">
+        <div><span>Abertos</span><strong id="openCount">0</strong></div>
+        <div><span>Atualizacao</span><strong id="generatedAt">--:--:--</strong></div>
+      </div>
+    </header>
+
+    <section id="boardBody" class="board-body empty-state">
+      <div class="empty-card">
+        <h2>Nenhuma solicitacao aberta</h2>
+        <p>Assim que chegar um novo chamado, o painel atualiza automaticamente.</p>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

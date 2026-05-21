@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Platforms>AnyCPU;x86</Platforms>
+    <ApplicationIcon>..\assets\icons\callbell-bell.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CallBell.Config\CallBell.Config.csproj" />
+    <ProjectReference Include="..\CallBell.Core\CallBell.Core.csproj" />
+    <ProjectReference Include="..\CallBell.Data\CallBell.Data.csproj" />
+  </ItemGroup>
+
+</Project>
