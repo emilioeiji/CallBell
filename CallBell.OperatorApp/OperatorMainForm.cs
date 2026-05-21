@@ -172,9 +172,9 @@ public sealed class OperatorMainForm : Form
             BackColor = shell.BackColor
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 88));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 120));
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
         shell.Controls.Add(layout);
 
         layout.Controls.Add(BuildSectionTitle("2. Equipamento e motivo", string.Empty), 0, 0);
@@ -610,7 +610,7 @@ public sealed class OperatorMainForm : Form
             ? "Este motivo exige selecao de maquina."
             : "Este motivo nao precisa de maquina.";
         _machinePanel.Visible = _selectedReason.RequiresMachine;
-        _actionColumn.RowStyles[0].Height = _selectedReason.RequiresMachine ? 58 : 0;
+        _actionColumn.RowStyles[0].Height = _selectedReason.RequiresMachine ? 65 : 0;
         _actionColumn.RowStyles[0].SizeType = _selectedReason.RequiresMachine ? SizeType.Percent : SizeType.Absolute;
         _actionColumn.RowStyles[1].Height = _selectedReason.RequiresMachine ? 42 : 100;
         _actionColumn.RowStyles[1].SizeType = SizeType.Percent;
@@ -657,6 +657,20 @@ public sealed class OperatorMainForm : Form
             SaveProfile(showFeedback: false);
             _lblStatus.Text = $"Solicitacao {request.TicketNumber} enviada com sucesso.";
             _lblStatus.ForeColor = Color.FromArgb(22, 101, 52);
+
+            _loadingSelections = true;
+            try
+            {
+                _cboEquipment.SelectedIndex = 0;
+            }
+            finally
+            {
+                _loadingSelections = false;
+            }
+
+            _selectedReason = null;
+            UpdateReasonHeader();
+            RenderReasonButtons();
         }
         catch (Exception ex)
         {
