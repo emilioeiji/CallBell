@@ -4,6 +4,7 @@ using CallBell.Core.Entities;
 using CallBell.Core.Enums;
 using CallBell.Core.Models;
 using CallBell.Data.Repositories;
+using Microsoft.Data.Sqlite;
 
 namespace CallBell.ManagementApp;
 
@@ -425,12 +426,12 @@ public sealed class ManagementMainForm : Form
 
     private void RefreshLookupColumns()
     {
-        ConfigureLookupColumn(_areaSectorColumn, _sectorLookupOptions);
-        ConfigureLookupColumn(_equipmentSectorColumn, _sectorLookupOptions);
-        ConfigureLookupColumn(_machineSectorColumn, _sectorLookupOptions);
-        ConfigureLookupColumn(_machineAreaColumn, _areaLookupOptions);
-        ConfigureLookupColumn(_mappingEquipmentColumn, _equipmentLookupOptions);
-        ConfigureLookupColumn(_mappingReasonColumn, _reasonLookupOptions);
+        ConfigureLookupColumn(_areaSectorColumn, MergeLookupOptions(_sectorLookupOptions, _areaRows.Select(x => x.SectorId)));
+        ConfigureLookupColumn(_equipmentSectorColumn, MergeLookupOptions(_sectorLookupOptions, _equipmentRows.Select(x => x.SectorId)));
+        ConfigureLookupColumn(_machineSectorColumn, MergeLookupOptions(_sectorLookupOptions, _machineRows.Select(x => x.SectorId)));
+        ConfigureLookupColumn(_machineAreaColumn, MergeLookupOptions(_areaLookupOptions, _machineRows.Select(x => x.WorkAreaId)));
+        ConfigureLookupColumn(_mappingEquipmentColumn, MergeLookupOptions(_equipmentLookupOptions, _equipmentReasonMappingRows.Select(x => x.EquipmentId)));
+        ConfigureLookupColumn(_mappingReasonColumn, MergeLookupOptions(_reasonLookupOptions, _equipmentReasonMappingRows.Select(x => x.ReasonId)));
     }
 
     private async Task RefreshRequestsAsync()
@@ -594,40 +595,176 @@ public sealed class ManagementMainForm : Form
         column.FlatStyle = FlatStyle.Flat;
     }
 
+    private static IReadOnlyList<LookupOption> MergeLookupOptions(IReadOnlyList<LookupOption> options, IEnumerable<int> rowIds)
+    {
+        var merged = options.ToList();
+        var knownIds = merged.Select(x => x.Id).ToHashSet();
+
+        foreach (var missingId in rowIds.Where(x => x > 0 && !knownIds.Contains(x)).Distinct().OrderBy(x => x))
+        {
+            merged.Add(new LookupOption(missingId, $"Cadastro ausente (ID {missingId})"));
+        }
+
+        return merged;
+    }
+
     private async Task SaveSectorsAsync()
     {
-        await _masterDataRepository.SaveSectorsAsync(_sectorRows.Where(IsValidSector));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueSectors(_sectorRows.Where(IsValidSector));
+            await _masterDataRepository.SaveSectorsAsync(_sectorRows.Where(IsValidSector));
+            await LoadMasterDataAsync();
+        });
     }
 
     private async Task SaveAreasAsync()
     {
-        await _masterDataRepository.SaveWorkAreasAsync(_areaRows.Where(IsValidWorkArea));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueWorkAreas(_areaRows.Where(IsValidWorkArea));
+            await _masterDataRepository.SaveWorkAreasAsync(_areaRows.Where(IsValidWorkArea));
+            await LoadMasterDataAsync();
+        });
     }
 
     private async Task SaveEquipmentsAsync()
     {
-        await _masterDataRepository.SaveEquipmentsAsync(_equipmentRows.Where(IsValidEquipment));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueEquipments(_equipmentRows.Where(IsValidEquipment));
+            await _masterDataRepository.SaveEquipmentsAsync(_equipmentRows.Where(IsValidEquipment));
+            await LoadMasterDataAsync();
+        });
     }
 
     private async Task SaveMachinesAsync()
     {
-        await _masterDataRepository.SaveMachinesAsync(_machineRows.Where(IsValidMachine));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueMachines(_machineRows.Where(IsValidMachine));
+            await _masterDataRepository.SaveMachinesAsync(_machineRows.Where(IsValidMachine));
+            await LoadMasterDataAsync();
+        });
     }
 
     private async Task SaveReasonsAsync()
     {
-        await _masterDataRepository.SaveReasonsAsync(_reasonRows.Where(IsValidReason));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueReasons(_reasonRows.Where(IsValidReason));
+            await _masterDataRepository.SaveReasonsAsync(_reasonRows.Where(IsValidReason));
+            await LoadMasterDataAsync();
+        });
     }
 
     private async Task SaveEquipmentReasonMappingsAsync()
     {
-        await _masterDataRepository.ReplaceEquipmentReasonMappingsAsync(_equipmentReasonMappingRows.Where(IsValidEquipmentReasonMapping));
-        await LoadMasterDataAsync();
+        await ExecuteSaveAsync(async () =>
+        {
+            EnsureUniqueMappings(_equipmentReasonMappingRows.Where(IsValidEquipmentReasonMapping));
+            await _masterDataRepository.ReplaceEquipmentReasonMappingsAsync(_equipmentReasonMappingRows.Where(IsValidEquipmentReasonMapping));
+            await LoadMasterDataAsync();
+        });
+    }
+
+    private async Task ExecuteSaveAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(this, ex.Message, "CallBell", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
+        {
+            MessageBox.Show(this,
+                "Nao foi possivel salvar porque existe um cadastro duplicado ou um vinculo inconsistente no banco. Atualize a tela, revise os codigos e tente novamente.",
+                "CallBell",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
+    private void EnsureUniqueSectors(IEnumerable<Sector> sectors)
+    {
+        var duplicate = sectors
+            .GroupBy(x => NormalizeKey(x.Code))
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Key) && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Ja existe mais de um setor com o codigo '{duplicate.First().Code}'.");
+        }
+    }
+
+    private void EnsureUniqueWorkAreas(IEnumerable<WorkArea> areas)
+    {
+        var duplicate = areas
+            .GroupBy(x => new { x.SectorId, Code = NormalizeKey(x.Code) })
+            .FirstOrDefault(x => x.Key.SectorId > 0 && !string.IsNullOrWhiteSpace(x.Key.Code) && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Ja existe mais de um local/area com o codigo '{duplicate.First().Code}' no setor '{ResolveSectorName(duplicate.Key.SectorId)}'.");
+        }
+    }
+
+    private void EnsureUniqueEquipments(IEnumerable<Equipment> equipments)
+    {
+        var duplicate = equipments
+            .GroupBy(x => new { x.SectorId, Code = NormalizeKey(x.Code) })
+            .FirstOrDefault(x => x.Key.SectorId > 0 && !string.IsNullOrWhiteSpace(x.Key.Code) && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Ja existe mais de um equipamento com o codigo '{duplicate.First().Code}' no setor '{ResolveSectorName(duplicate.Key.SectorId)}'.");
+        }
+    }
+
+    private void EnsureUniqueMachines(IEnumerable<Machine> machines)
+    {
+        var duplicate = machines
+            .GroupBy(x => new { x.WorkAreaId, Code = NormalizeKey(x.Code) })
+            .FirstOrDefault(x => x.Key.WorkAreaId > 0 && !string.IsNullOrWhiteSpace(x.Key.Code) && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Ja existe mais de uma maquina com o codigo '{duplicate.First().Code}' no mesmo local/area.");
+        }
+    }
+
+    private void EnsureUniqueReasons(IEnumerable<RequestReason> reasons)
+    {
+        var duplicate = reasons
+            .GroupBy(x => NormalizeKey(x.Code))
+            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.Key) && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException($"Ja existe mais de um motivo com o codigo '{duplicate.First().Code}'.");
+        }
+    }
+
+    private void EnsureUniqueMappings(IEnumerable<EquipmentReasonMapping> mappings)
+    {
+        var duplicate = mappings
+            .GroupBy(x => new { x.EquipmentId, x.ReasonId })
+            .FirstOrDefault(x => x.Key.EquipmentId > 0 && x.Key.ReasonId > 0 && x.Count() > 1);
+
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException("Existe mais de um vinculo repetido entre o mesmo equipamento e motivo.");
+        }
+    }
+
+    private static string NormalizeKey(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim().ToUpperInvariant();
     }
 
     private void ConfigureRequestsGrid()
@@ -661,6 +798,11 @@ public sealed class ManagementMainForm : Form
     private void ConfigureAreaGrid()
     {
         ConfigureMasterGrid(_areasGrid);
+        _areasGrid.DefaultValuesNeeded += (_, e) =>
+        {
+            e.Row.Cells[_areaSectorColumn.Index].Value = _sectorLookupOptions.FirstOrDefault()?.Id ?? 0;
+            e.Row.Cells[5].Value = true;
+        };
         _areaSectorColumn.HeaderText = "Setor";
         _areaSectorColumn.DataPropertyName = nameof(WorkArea.SectorId);
         _areaSectorColumn.Width = 220;
@@ -675,6 +817,11 @@ public sealed class ManagementMainForm : Form
     private void ConfigureEquipmentGrid()
     {
         ConfigureMasterGrid(_equipmentsGrid);
+        _equipmentsGrid.DefaultValuesNeeded += (_, e) =>
+        {
+            e.Row.Cells[_equipmentSectorColumn.Index].Value = _sectorLookupOptions.FirstOrDefault()?.Id ?? 0;
+            e.Row.Cells[5].Value = true;
+        };
         _equipmentSectorColumn.HeaderText = "Setor";
         _equipmentSectorColumn.DataPropertyName = nameof(Equipment.SectorId);
         _equipmentSectorColumn.Width = 220;
@@ -689,6 +836,12 @@ public sealed class ManagementMainForm : Form
     private void ConfigureMachineGrid()
     {
         ConfigureMasterGrid(_machinesGrid);
+        _machinesGrid.DefaultValuesNeeded += (_, e) =>
+        {
+            e.Row.Cells[_machineSectorColumn.Index].Value = _sectorLookupOptions.FirstOrDefault()?.Id ?? 0;
+            e.Row.Cells[_machineAreaColumn.Index].Value = _areaLookupOptions.FirstOrDefault()?.Id ?? 0;
+            e.Row.Cells[6].Value = true;
+        };
         _machineSectorColumn.HeaderText = "Setor";
         _machineSectorColumn.DataPropertyName = nameof(Machine.SectorId);
         _machineSectorColumn.Width = 220;
@@ -707,6 +860,7 @@ public sealed class ManagementMainForm : Form
     private void ConfigureReasonGrid()
     {
         ConfigureMasterGrid(_reasonsGrid);
+        _reasonsGrid.DefaultValuesNeeded += (_, e) => e.Row.Cells[5].Value = true;
         _reasonsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Codigo do motivo", DataPropertyName = nameof(RequestReason.Code), Width = 170 });
         _reasonsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Nome em portugues", DataPropertyName = nameof(RequestReason.NamePt), Width = 220 });
         _reasonsGrid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "Nome em japones", DataPropertyName = nameof(RequestReason.NameJp), Width = 220 });
@@ -718,6 +872,11 @@ public sealed class ManagementMainForm : Form
     private void ConfigureEquipmentReasonMappingGrid()
     {
         ConfigureMasterGrid(_equipmentReasonMappingsGrid);
+        _equipmentReasonMappingsGrid.DefaultValuesNeeded += (_, e) =>
+        {
+            e.Row.Cells[_mappingEquipmentColumn.Index].Value = _equipmentLookupOptions.FirstOrDefault()?.Id ?? 0;
+            e.Row.Cells[_mappingReasonColumn.Index].Value = _reasonLookupOptions.FirstOrDefault()?.Id ?? 0;
+        };
         _mappingEquipmentColumn.HeaderText = "Equipamento";
         _mappingEquipmentColumn.DataPropertyName = nameof(EquipmentReasonMapping.EquipmentId);
         _mappingEquipmentColumn.Width = 340;
@@ -955,7 +1114,7 @@ public sealed class ManagementMainForm : Form
         panel.FlowDirection = FlowDirection.TopDown;
         panel.WrapContents = false;
         panel.AutoScroll = true;
-        panel.Padding = new Padding(8, 4, 8, 4);
+        panel.Padding = new Padding(10, 8, 10, 8);
     }
 
     private void RenderShiftChart(IEnumerable<ReportRowView> rows)
@@ -964,8 +1123,8 @@ public sealed class ManagementMainForm : Form
         _shiftChartPanel.Controls.Clear();
         var items = new List<ChartBarItem>
         {
-            new("Turno dia", rows.Count(x => x.Shift == ShiftType.Day), Color.FromArgb(37, 99, 235)),
-            new("Turno noite", rows.Count(x => x.Shift == ShiftType.Night), Color.FromArgb(14, 116, 144))
+            new("Turno dia", rows.Count(x => x.Shift == ShiftType.Day), Color.FromArgb(234, 88, 12)),
+            new("Turno noite", rows.Count(x => x.Shift == ShiftType.Night), Color.FromArgb(37, 99, 235))
         };
         AppendBars(_shiftChartPanel, items);
         _shiftChartPanel.ResumeLayout();
@@ -975,9 +1134,18 @@ public sealed class ManagementMainForm : Form
     {
         _reasonChartPanel.SuspendLayout();
         _reasonChartPanel.Controls.Clear();
+        var palette = new[]
+        {
+            Color.FromArgb(37, 99, 235),
+            Color.FromArgb(14, 116, 144),
+            Color.FromArgb(234, 88, 12),
+            Color.FromArgb(22, 163, 74),
+            Color.FromArgb(79, 70, 229),
+            Color.FromArgb(219, 39, 119)
+        };
         var items = reasons
             .Take(8)
-            .Select(x => new ChartBarItem(x.ReasonNamePt, x.TotalRequests, Color.FromArgb(234, 88, 12)))
+            .Select((x, index) => new ChartBarItem(x.ReasonNamePt, x.TotalRequests, palette[index % palette.Length]))
             .ToList();
         AppendBars(_reasonChartPanel, items);
         _reasonChartPanel.ResumeLayout();
@@ -986,46 +1154,92 @@ public sealed class ManagementMainForm : Form
     private static void AppendBars(FlowLayoutPanel panel, IReadOnlyList<ChartBarItem> items)
     {
         var max = Math.Max(1, items.DefaultIfEmpty(new ChartBarItem(string.Empty, 0, Color.White)).Max(x => x.Value));
+        var total = Math.Max(1, items.Sum(x => x.Value));
         foreach (var item in items)
         {
-            panel.Controls.Add(BuildBarCard(item, max));
+            panel.Controls.Add(BuildBarCard(item, max, total));
         }
     }
 
-    private static Control BuildBarCard(ChartBarItem item, int max)
+    private static Control BuildBarCard(ChartBarItem item, int max, int total)
     {
+        var percentage = item.Value <= 0 ? 0 : (item.Value / (double)total) * 100d;
+
         var shell = new Panel
         {
             Width = 540,
-            Height = 46,
-            Margin = new Padding(0, 0, 0, 10),
-            BackColor = Color.White
+            Height = 78,
+            Margin = new Padding(0, 0, 0, 12),
+            BackColor = Color.FromArgb(248, 250, 252),
+            Padding = new Padding(12, 10, 12, 10)
         };
+
+        var header = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top,
+            Height = 26,
+            ColumnCount = 3,
+            BackColor = Color.Transparent
+        };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 74));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 62));
 
         var title = new Label
         {
             Text = item.Label,
-            Dock = DockStyle.Top,
-            Height = 18,
+            Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(30, 41, 59),
-            Font = new Font("Segoe UI Semibold", 9.5F, FontStyle.Bold, GraphicsUnit.Point)
+            Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point),
+            TextAlign = ContentAlignment.MiddleLeft
         };
 
         var value = new Label
         {
             Text = item.Value.ToString(),
-            Dock = DockStyle.Right,
-            Width = 48,
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = item.Color,
+            BackColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point),
+            Margin = new Padding(6, 0, 6, 0)
+        };
+
+        var percentLabel = new Label
+        {
+            Text = $"{percentage:0}%",
+            Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(15, 23, 42),
-            Font = new Font("Segoe UI Semibold", 10F, FontStyle.Bold, GraphicsUnit.Point)
+            ForeColor = Color.FromArgb(71, 85, 105),
+            Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point)
+        };
+
+        header.Controls.Add(title, 0, 0);
+        header.Controls.Add(value, 1, 0);
+        header.Controls.Add(percentLabel, 2, 0);
+
+        var subtitle = new Label
+        {
+            Text = item.Value == 1 ? "1 chamado" : $"{item.Value} chamados",
+            Dock = DockStyle.Top,
+            Height = 18,
+            ForeColor = Color.FromArgb(100, 116, 139),
+            Font = new Font("Segoe UI", 8.75F, FontStyle.Regular, GraphicsUnit.Point),
+            Margin = new Padding(0, 2, 0, 0)
+        };
+
+        var trackHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(0, 8, 0, 0),
+            BackColor = Color.Transparent
         };
 
         var track = new Panel
         {
-            Dock = DockStyle.Fill,
-            BackColor = Color.FromArgb(226, 232, 240),
-            Margin = new Padding(0, 6, 6, 0)
+            Dock = DockStyle.Top,
+            Height = 14,
+            BackColor = Color.FromArgb(226, 232, 240)
         };
 
         var fill = new Panel
@@ -1036,19 +1250,15 @@ public sealed class ManagementMainForm : Form
         };
         track.Resize += (_, _) =>
         {
-            fill.Width = Math.Max(10, (int)Math.Round(track.ClientSize.Width * (item.Value / (double)max)));
+            fill.Width = item.Value <= 0
+                ? 0
+                : Math.Max(12, (int)Math.Round(track.ClientSize.Width * (item.Value / (double)max)));
         };
         track.Controls.Add(fill);
-
-        var row = new Panel
-        {
-            Dock = DockStyle.Fill
-        };
-        row.Controls.Add(track);
-        row.Controls.Add(value);
-
-        shell.Controls.Add(row);
-        shell.Controls.Add(title);
+        trackHost.Controls.Add(track);
+        shell.Controls.Add(trackHost);
+        shell.Controls.Add(subtitle);
+        shell.Controls.Add(header);
         return shell;
     }
 
@@ -1123,7 +1333,14 @@ public sealed class ManagementMainForm : Form
         grid.RowHeadersVisible = false;
         grid.EditMode = DataGridViewEditMode.EditOnEnter;
         grid.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        grid.DataError += MasterGridDataError;
         ApplyGridTheme(grid, readOnly: false);
+    }
+
+    private static void MasterGridDataError(object? sender, DataGridViewDataErrorEventArgs e)
+    {
+        e.ThrowException = false;
+        e.Cancel = false;
     }
 
     private static void ApplyGridTheme(DataGridView grid, bool readOnly)
